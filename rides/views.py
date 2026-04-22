@@ -51,3 +51,34 @@ class AcceptRideView(views.APIView):
             {'message': 'Заказ принят', 'ride_id': ride.id},
             status=status.HTTP_200_OK,
         )
+
+
+class FinishRideView(views.APIView):
+    permission_classes = [IsDriver]
+
+    def post(self, request, pk):
+        ride = get_object_or_404(Ride, pk=pk)
+
+        if ride.status != Ride.Status.ACCEPTED or ride.driver != request.user:
+            return Response(
+                {'error': 'Поездка недоступна для завершения'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        final_price = ride.price
+        if ride.promocode:
+            discount_percent = Decimal(str(ride.promocode.discount_percent))
+            final_price = ride.price * (Decimal('1') - discount_percent / Decimal('100'))
+
+        ride.price = final_price
+        ride.status = Ride.Status.FINISHED
+        ride.save()
+
+        return Response(
+            {
+                'message': 'Поездка завершена',
+                'ride_id': ride.id,
+                'final_price': str(final_price),
+            },
+            status=status.HTTP_200_OK,
+        )
