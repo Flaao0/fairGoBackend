@@ -15,3 +15,24 @@ class RideCreateSerializer(serializers.ModelSerializer):
             'promocode',
         )
         read_only_fields = ('id',)
+
+
+class RideListSerializer(serializers.ModelSerializer):
+    passenger_name = serializers.CharField(
+        source='passenger.username',
+        read_only=True,
+    )
+
+    class Meta:
+        model = Ride
+        fields = (
+            'id',
+            'start_lat',
+            'start_lon',
+            'finish_lat',
+            'finish_lon',
+            'status',
+            'price',
+            'created_at',
+            'passenger_name',
+        )
