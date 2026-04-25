@@ -10,6 +10,7 @@ from users.permissions import IsDriver, IsPassenger
 
 from .models import Ride
 from .serializers import RideCreateSerializer, RideListSerializer
+from .utils import calculate_distance, calculate_price
 
 
 class RideCreateView(generics.CreateAPIView):
@@ -18,10 +19,23 @@ class RideCreateView(generics.CreateAPIView):
     permission_classes = [IsPassenger]
 
     def perform_create(self, serializer):
+        start_lat = serializer.validated_data['start_lat']
+        start_lon = serializer.validated_data['start_lon']
+        finish_lat = serializer.validated_data['finish_lat']
+        finish_lon = serializer.validated_data['finish_lon']
+
+        distance_km = calculate_distance(
+            lat1=start_lat,
+            lon1=start_lon,
+            lat2=finish_lat,
+            lon2=finish_lon,
+        )
+        calculated_price = calculate_price(distance_km)
+
         serializer.save(
             passenger=self.request.user,
             status=Ride.Status.SEARCHING,
-            price=Decimal('500.00'),
+            price=calculated_price,
         )
 
 
@@ -65,12 +79,12 @@ class FinishRideView(views.APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        final_price = ride.price
         if ride.promocode:
-            discount_percent = Decimal(str(ride.promocode.discount_percent))
-            final_price = ride.price * (Decimal('1') - discount_percent / Decimal('100'))
+            ride.price = ride.price * (
+                Decimal('1') - Decimal(str(ride.promocode.discount_percent)) / Decimal('100.0')
+            )
+            ride.price = ride.price.quantize(Decimal('0.01'))
 
-        ride.price = final_price
         ride.status = Ride.Status.FINISHED
         ride.save()
 
@@ -78,7 +92,18 @@ class FinishRideView(views.APIView):
             {
                 'message': 'Поездка завершена',
                 'ride_id': ride.id,
-                'final_price': str(final_price),
+                'final_price': str(ride.price),
             },
             status=status.HTTP_200_OK,
         )
+
+
+class PassengerHistoryView(generics.ListAPIView):
+    permission_classes = [IsPassenger]
+    serializer_class = RideListSerializer
+
+    def get_queryset(self):
+        return Ride.objects.filter(
+            passenger=self.request.user,
+            status__in=[Ride.Status.FINISHED, Ride.Status.CANCELED],
+        ).order_by('-created_at')
