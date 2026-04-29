@@ -15,4 +15,10 @@ class RideConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
     async def ride_status_update(self, event):
-        await self.send(text_data=json.dumps(event['data']))
+        ride_id = event.get('ride_id')
+        status = event.get('status')
+
+        await self.send(text_data=json.dumps({
+            'ride_id': ride_id,
+            'status': status
+        }))

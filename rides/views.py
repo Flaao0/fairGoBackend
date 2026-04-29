@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from rest_framework import generics
-from rest_framework import status
+from rest_framework import status, response
 from rest_framework import views
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
@@ -12,6 +12,8 @@ from .models import Ride
 from .serializers import RideCreateSerializer, RideListSerializer
 from .utils import calculate_distance, calculate_price
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 class RideCreateView(generics.CreateAPIView):
     queryset = Ride.objects.all()
@@ -61,6 +63,16 @@ class AcceptRideView(views.APIView):
         ride.status = Ride.Status.ACCEPTED
         ride.save()
 
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"ride_{ride.id}",
+            {
+                "type": "ride_status_update",
+                "status": ride.status,
+                "ride_id": ride.id
+            }
+        )
+
         return Response(
             {'message': 'Заказ принят', 'ride_id': ride.id},
             status=status.HTTP_200_OK,
@@ -87,6 +99,16 @@ class FinishRideView(views.APIView):
 
         ride.status = Ride.Status.FINISHED
         ride.save()
+
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"ride_{ride.id}",  
+            {
+                "type": "ride_status_update", 
+                "status": ride.status,
+                "ride_id": ride.id
+            }
+        )
 
         return Response(
             {
